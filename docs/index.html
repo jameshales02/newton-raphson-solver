@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Trading Systems Portfolio</title>
+  <meta name="description" content="Six trading systems that run in the browser: a matching engine, a market-making simulator, an event-driven backtester, an options pricer, a prop-account risk model and a market-data pipeline, each with tests, formulas and a README.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%276%27 width=%276%27 height=%279%27 rx=%271%27 fill=%27%232a78d6%27/%3E%3Crect x=%279%27 y=%271%27 width=%276%27 height=%2714%27 rx=%271%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="assets/site.css">
+  <script type="module" src="assets/ui.js"></script>
+  <script type="module" src="home.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span class="brand-text">Trading Systems Portfolio</span></a>
+    <nav class="nav" aria-label="Projects">
+      <a href="order-book/index.html">Order book</a>
+      <a href="market-making/index.html">Market making</a>
+      <a href="backtester/index.html">Backtester</a>
+      <a href="options/index.html">Options</a>
+      <a href="prop-risk/index.html">Prop risk</a>
+      <a href="data-pipeline/index.html">Data pipeline</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <div>
+      <div class="eyebrow">Trading Systems Portfolio</div>
+      <h1>Six trading systems, from the order book up</h1>
+      <p class="lead">A matching engine, a market maker, a backtester, an options pricer, a prop-account risk model and a market-data pipeline. Each one runs live in this browser, writes out the maths it implements, states its limitations, and is covered by tests.</p>
+      <div class="hero-stats">
+        <span><b>78</b>automated tests</span>
+        <span><b>3.3–4.0M</b>orders matched per second</span>
+        <span><b>0</b>runtime dependencies to build</span>
+      </div>
+    </div>
+    <div class="live-card" aria-label="Live order book driven by the matching engine">
+      <div class="live-head">
+        <span class="live-dot">Live book, simulated flow through the real engine</span>
+        <a href="order-book/index.html">Trade against it</a>
+      </div>
+      <div class="touch" id="touch"></div>
+      <div id="hero-depth"></div>
+      <div class="mini-tape" id="hero-tape" aria-live="off"></div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="section-head">
+      <h2>The projects</h2>
+      <a href="https://github.com/jameshales02/newton-raphson-solver" target="_blank" rel="noopener">Source on GitHub</a>
+    </div>
+    <div class="projects">
+      <a class="project" href="order-book/index.html">
+        <span class="eyebrow">1 · Market microstructure</span>
+        <h2>Order book &amp; matching engine</h2>
+        <p>Price-time priority with limit, market and cancel orders and partial fills, a live depth chart and trade tape. Sorted price levels with a FIFO linked list per level.</p>
+        <ul>
+          <li><b>3.3–4.0M/s</b><span>orders matched in Node, p99 under 1 µs per call</span></li>
+          <li><b>15,000</b><span>random events with trades identical to a brute-force matcher</span></li>
+        </ul>
+        <span class="go"><span>Open the engine</span><span>Project 1</span></span>
+      </a>
+      <a class="project" href="market-making/index.html">
+        <span class="eyebrow">2 · Liquidity provision</span>
+        <h2>Market-making simulator</h2>
+        <p>An Avellaneda–Stoikov bot quotes around fair value and skews for inventory. P&amp;L splits exactly into spread capture, inventory and adverse selection.</p>
+        <ul>
+          <li><b>6.6 vs 12.8</b><span>P&amp;L std dev with and without inventory skew</span></li>
+          <li><b>65 vs 63</b><span>mean profit against the original paper's Table 1</span></li>
+        </ul>
+        <span class="go"><span>Open the simulator</span><span>Project 2</span></span>
+      </a>
+      <a class="project" href="backtester/index.html">
+        <span class="eyebrow">3 · Research infrastructure</span>
+        <h2>Event-driven backtester</h2>
+        <p>Next-open fills, square-root impact, fees and volatility targeting. An automated audit proves no look-ahead, and an overfitting lab deflates the Sharpe ratio.</p>
+        <ul>
+          <li><b>−0.4 → +6.4</b><span>Sharpe of a random walk once the look-ahead bug is switched on</span></li>
+          <li><b>0 of 40</b><span>false positives from the deflated Sharpe on edgeless data</span></li>
+        </ul>
+        <span class="go"><span>Open the backtester</span><span>Project 3</span></span>
+      </a>
+      <a class="project" href="options/index.html">
+        <span class="eyebrow">4 · Derivatives</span>
+        <h2>Options pricer &amp; Greeks</h2>
+        <p>Black–Scholes, a binomial tree with early exercise and variance-reduced Monte Carlo, with live Greeks and a safeguarded Newton–Raphson implied-volatility solver.</p>
+        <ul>
+          <li><b>3 steps</b><span>for Newton–Raphson to reach 1e-14 at the money</span></li>
+          <li><b>10.4506</b><span>Hull's call, matched by tree and Monte Carlo</span></li>
+        </ul>
+        <span class="go"><span>Open the pricer</span><span>Project 4</span></span>
+      </a>
+      <a class="project" href="prop-risk/index.html">
+        <span class="eyebrow">5 · Risk management</span>
+        <h2>Prop account risk model</h2>
+        <p>Monte Carlo of a futures strategy against evaluation rules: trailing drawdown, daily loss limit, target and time limit. Gives the odds of passing or blowing up at each size.</p>
+        <ul>
+          <li><b>54%</b><span>best pass rate, at 2 contracts; bigger sizes approach a coin toss</span></li>
+          <li><b>±1.5 pts</b><span>agreement with the overshoot-corrected gambler's ruin</span></li>
+        </ul>
+        <span class="go"><span>Open the model</span><span>Project 5</span></span>
+      </a>
+      <a class="project" href="data-pipeline/index.html">
+        <span class="eyebrow">6 · Data engineering</span>
+        <h2>Market data pipeline</h2>
+        <p>Coinbase and Kraken minute bars into SQLite with idempotent upserts and quality checks. VWAP, realised vol and correlation run as SQL window functions, in Python and in the browser.</p>
+        <ul>
+          <li><b>0.88</b><span>median BTC–ETH 1-minute return correlation over a recorded day</span></li>
+          <li><b>1 SQL source</b><span>the same query files run by sqlite3 and sql.js</span></li>
+        </ul>
+        <span class="go"><span>Open the pipeline</span><span>Project 6</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="wrap principles">
+    <div>
+      <h3>Runs where you read it</h3>
+      <p>Every engine is a plain JavaScript module with no build step, running in your browser. The same files are imported by the test suite, so the demo is the tested code. The data pipeline's Python and browser halves execute identical SQL files.</p>
+    </div>
+    <div>
+      <h3>Tested, not just plotted</h3>
+      <p>59 JavaScript tests (<code>npm test</code>) and 19 Python tests check rules exactly, compare optimised code against naive references, and verify statistics against closed forms. Continuous integration runs both on every push.</p>
+    </div>
+    <div>
+      <h3>Honest maths</h3>
+      <p>Each page writes out the formulas it implements, reports standard errors next to estimates, and ends with its limitations. Where a result disagreed with theory or with a published paper, the page says by how much and why.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>Trading Systems Portfolio. The repository also holds the original Newton–Raphson solver that the implied-volatility solver builds on.</span>
+    <a data-src="README.md" href="#">README</a>
+  </div>
+</footer>
+</body>
+</html>

@@ -5,11 +5,11 @@
   "description": "Six trading-systems projects that run in the browser: order book, market making, backtesting, options, prop risk and a market-data pipeline.",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test \"tests/*.test.js\"",
     "bench": "node bench/orderbook-bench.js",
     "serve": "python3 -m http.server 8000 --directory docs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }
