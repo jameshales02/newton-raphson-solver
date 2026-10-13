@@ -276,6 +276,11 @@ export class XYChart extends BaseChart {
       ymax = 1;
     }
     if (xmax === xmin) xmax = xmin + 1;
+    if (o.x?.pad) {
+      const p = (xmax - xmin) * o.x.pad;
+      xmin -= p;
+      xmax += p;
+    }
     if (o.y?.log) {
       return { xmin, xmax, ymin: Math.log10(ymin), ymax: Math.log10(ymax) + 1e-9 };
     }
@@ -322,7 +327,7 @@ export class XYChart extends BaseChart {
       const stride = Math.ceil(yt.length / 6);
       yt = yt.filter((_, i) => i % stride === 0);
     } else {
-      yt = niceTicks(d.ymin, d.ymax, Math.max(2, Math.round(ph / 48)));
+      yt = niceTicks(d.ymin, d.ymax, Math.max(3, Math.round(ph / 44)));
     }
     ctx.lineWidth = 1;
     ctx.textAlign = 'right';

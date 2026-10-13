@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Event-Driven Backtester</title>
+  <meta name="description" content="An event-driven backtester with realistic slippage, fees and position sizing, a look-ahead audit, and an overfitting lab with deflated Sharpe ratios and walk-forward testing.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%276%27 width=%276%27 height=%279%27 rx=%271%27 fill=%27%232a78d6%27/%3E%3Crect x=%279%27 y=%271%27 width=%276%27 height=%2714%27 rx=%271%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script type="module" src="../assets/ui.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span class="brand-text">Trading Systems Portfolio</span></a>
+    <nav class="nav" aria-label="Projects">
+      <a href="../order-book/index.html">Order book</a>
+      <a href="../market-making/index.html">Market making</a>
+      <a href="../backtester/index.html" aria-current="page">Backtester</a>
+      <a href="../options/index.html">Options</a>
+      <a href="../prop-risk/index.html">Prop risk</a>
+      <a href="../data-pipeline/index.html">Data pipeline</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="wrap page-head">
+    <div class="eyebrow">Project 3 · Research infrastructure</div>
+    <h1>Event-driven backtester</h1>
+    <p class="lead">Strategies see one bar at a time and trade at the next bar's open, paying spread, market impact and commission. Positions are sized to a volatility target. The page audits the engine for look-ahead bias and shows how quickly a parameter search finds edges in pure noise.</p>
+    <div class="meta-links">
+      <a data-src="docs/backtester/README.md" href="#notes">README</a>
+      <a data-src="docs/backtester/backtest.js" href="#notes">Engine source</a>
+      <a data-src="tests/backtest.test.js" href="#testing">Tests</a>
+    </div>
+  </section>
+
+  <section class="wrap bench" aria-label="Backtester">
+    <aside class="panel sticky-panel">
+      <div class="panel-group">
+        <h3>Data</h3>
+        <div class="field">
+          <label for="source">Price history</label>
+          <select id="source">
+            <option value="synthetic" selected>Synthetic, known process</option>
+            <option value="csv">Upload a CSV</option>
+          </select>
+        </div>
+        <div class="field" data-src-for="synthetic">
+          <label for="regime">Process</label>
+          <select id="regime">
+            <option value="random_walk" selected>Random walk (no edge exists)</option>
+            <option value="trend">Persistent trends (trend edge)</option>
+            <option value="mean_revert">Mean-reverting (reversal edge)</option>
+            <option value="drift">Upward drift (index-like)</option>
+          </select>
+        </div>
+        <div class="field-2" data-src-for="synthetic">
+          <div class="field">
+            <label for="seed">Seed</label>
+            <input id="seed" type="number" min="1" step="1" value="1">
+          </div>
+          <div class="field">
+            <label for="years">Years</label>
+            <input id="years" type="number" min="3" max="30" step="1" value="10">
+          </div>
+        </div>
+        <div class="field" data-src-for="csv" hidden>
+          <label for="csv-file">CSV with date, open, high, low, close, volume</label>
+          <input id="csv-file" type="file" accept=".csv,text/csv">
+          <span class="hint" id="csv-status">Daily bars, oldest or newest first.</span>
+        </div>
+      </div>
+
+      <div class="panel-group">
+        <h3>Strategy</h3>
+        <div class="field">
+          <label for="strat">Rule</label>
+          <select id="strat">
+            <option value="sma" selected>Moving-average crossover</option>
+            <option value="momentum">Time-series momentum</option>
+            <option value="zscore">Z-score mean reversion</option>
+          </select>
+        </div>
+        <div class="field-2" data-strat="sma">
+          <div class="field"><label for="p-fast">Fast MA</label><input id="p-fast" type="number" min="2" step="1" value="20"></div>
+          <div class="field"><label for="p-slow">Slow MA</label><input id="p-slow" type="number" min="3" step="1" value="100"></div>
+        </div>
+        <div class="field" data-strat="momentum" hidden>
+          <label for="p-look">Lookback (days)</label><input id="p-look" type="number" min="1" step="1" value="60">
+        </div>
+        <div class="field-2" data-strat="zscore" hidden>
+          <div class="field"><label for="p-zlook">Lookback</label><input id="p-zlook" type="number" min="3" step="1" value="20"></div>
+          <div class="field"><label for="p-entry">Entry |z|</label><input id="p-entry" type="number" min="0.25" step="0.25" value="1.5"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="long-only"> Long only</label>
+      </div>
+
+      <div class="panel-group">
+        <h3>Execution and costs</h3>
+        <div class="field">
+          <label for="timing">Fill timing</label>
+          <select id="timing">
+            <option value="next_open" selected>Next bar's open (correct)</option>
+            <option value="same_close">Signal bar's close (optimistic)</option>
+            <option value="same_open">Signal bar's open (look-ahead bug)</option>
+          </select>
+        </div>
+        <div class="field-2">
+          <div class="field"><label for="c-spread">Half-spread, bp</label><input id="c-spread" type="number" min="0" step="0.5" value="2"></div>
+          <div class="field"><label for="c-impact">Impact coef.</label><input id="c-impact" type="number" min="0" step="0.05" value="0.1"></div>
+        </div>
+        <div class="field-2">
+          <div class="field"><label for="c-comm">$ per share</label><input id="c-comm" type="number" min="0" step="0.001" value="0.005"></div>
+          <div class="field"><label for="c-min">Min ticket $</label><input id="c-min" type="number" min="0" step="0.5" value="1"></div>
+        </div>
+      </div>
+
+      <div class="panel-group">
+        <h3>Position sizing</h3>
+        <div class="field">
+          <label for="sizing">Method</label>
+          <select id="sizing">
+            <option value="vol_target" selected>Volatility target</option>
+            <option value="fixed">Fixed fraction of equity</option>
+          </select>
+        </div>
+        <div class="field-2">
+          <div class="field" data-size="vol_target"><label for="s-vol">Target vol %</label><input id="s-vol" type="number" min="1" max="60" step="1" value="15"></div>
+          <div class="field" data-size="fixed" hidden><label for="s-frac">Fraction %</label><input id="s-frac" type="number" min="5" max="300" step="5" value="100"></div>
+          <div class="field"><label for="s-lev">Max leverage</label><input id="s-lev" type="number" min="0.5" max="5" step="0.5" value="2"></div>
+        </div>
+      </div>
+      <p class="hint">Starting capital $1,000,000. Every change re-runs the backtest.</p>
+    </aside>
+
+    <div class="stack">
+      <div class="tiles">
+        <div class="tile"><span class="label">Sharpe ratio</span><span class="value" id="m-sharpe">–</span><span class="sub" id="m-sharpe-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">CAGR</span><span class="value" id="m-cagr">–</span><span class="sub" id="m-cagr-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Max drawdown</span><span class="value" id="m-dd">–</span><span class="sub" id="m-dd-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Win rate</span><span class="value" id="m-win">–</span><span class="sub" id="m-win-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Costs paid</span><span class="value" id="m-cost">–</span><span class="sub" id="m-cost-sub">&nbsp;</span></div>
+      </div>
+
+      <div class="card"><div id="equity-chart"></div></div>
+      <div class="grid-2">
+        <div class="card"><div id="dd-chart"></div></div>
+        <div class="card"><div id="exp-chart"></div></div>
+      </div>
+
+      <div class="card" id="audit">
+        <div class="card-title"><h3>Look-ahead audit</h3><span id="audit-pill"></span></div>
+        <p class="hint" style="margin-bottom:10px">On days when the strategy traded, the audit changes that day's close and scrambles every later bar, then re-runs. Any fill on or before that day that changes was decided with information it could not have had.</p>
+        <div class="table-wrap">
+          <table class="data" id="bias-table">
+            <thead><tr><th>Fill timing</th><th>Your strategy: Sharpe</th><th>CAGR</th><th>1-day momentum: Sharpe</th><th>Audit</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="trades-card">
+        <div class="card-title"><h3>Round-trip trades</h3><span class="hint" id="trades-note"></span></div>
+        <div class="table-wrap">
+          <table class="data" id="trades-table">
+            <thead><tr><th>Entry</th><th>Exit</th><th>Side</th><th>Calendar days</th><th>Peak shares</th><th>Costs</th><th>P&amp;L</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="overfit">
+        <div class="card-title"><h3>Overfitting lab: moving-average parameter search</h3><span class="hint" id="of-note"></span></div>
+        <p class="hint" style="margin-bottom:12px">38 fast/slow pairs are fitted on the first 60% of the history (in-sample) and judged on the last 40% (out-of-sample). The deflated Sharpe ratio asks whether the in-sample winner beats the best Sharpe you would expect from 38 tries on noise.</p>
+        <div class="tiles" style="margin-bottom:14px">
+          <div class="tile"><span class="label">In-sample winner</span><span class="value" id="of-best">–</span><span class="sub">fast / slow</span></div>
+          <div class="tile"><span class="label">Sharpe in-sample</span><span class="value" id="of-is">–</span><span class="sub" id="of-is-sub">&nbsp;</span></div>
+          <div class="tile"><span class="label">Sharpe out-of-sample</span><span class="value" id="of-oos">–</span><span class="sub" id="of-oos-sub">&nbsp;</span></div>
+          <div class="tile"><span class="label">Deflated Sharpe</span><span class="value" id="of-dsr">–</span><span class="sub" id="of-dsr-sub">&nbsp;</span></div>
+          <div class="tile"><span class="label">Walk-forward Sharpe</span><span class="value" id="of-wf">–</span><span class="sub">re-fitted every 6 months</span></div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <div class="card-title"><h3>In-sample Sharpe</h3><span class="hint">slow MA by row, fast MA by column</span></div>
+            <div class="heat" id="heat-is"></div>
+          </div>
+          <div>
+            <div class="card-title"><h3>Out-of-sample Sharpe</h3><span class="legend-ramp" id="heat-legend"></span></div>
+            <div class="heat" id="heat-oos"></div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px">
+          <div id="scatter-chart"></div>
+          <div id="wf-chart"></div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn ghost" type="button" id="repeat">Repeat on 20 fresh histories</button>
+          <span class="hint" id="repeat-note">Uses the selected process with seeds 1 to 20.</span>
+        </div>
+        <div class="table-wrap" id="repeat-wrap" hidden>
+          <table class="data" id="repeat-table">
+            <thead><tr><th>Over 20 histories</th><th>Mean</th><th>Std dev</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap notes" id="notes">
+    <nav class="toc" aria-label="On this page">
+      <span class="eyebrow">Notes</span>
+      <a href="#problem">The problem</a>
+      <a href="#design">Event-driven design</a>
+      <a href="#costs">Slippage, fees, sizing</a>
+      <a href="#metrics">Metrics</a>
+      <a href="#lookahead">Avoiding look-ahead</a>
+      <a href="#overfitting">Avoiding overfitting</a>
+      <a href="#results">Results</a>
+      <a href="#testing">Testing</a>
+      <a href="#limits">Limitations</a>
+    </nav>
+    <article class="prose">
+      <h2 id="problem">The problem</h2>
+      <p>A backtest answers one question: what would this rule have earned if I had traded it? It is easy to get a wrong answer that looks great. The two classic ways are using information before it existed (look-ahead bias) and trying enough variations that one fits the noise (overfitting). Both produce beautiful equity curves that fail on contact with a live market. This engine is built so the first is impossible by construction and the second is measured rather than ignored.</p>
+
+      <h2 id="design">Event-driven design</h2>
+      <p>Everything flows through one time-ordered event queue, so a backtest runs the same way a live system would.</p>
+      <ol>
+        <li><strong>MARKET</strong> for bar \( t \): the execution handler fills any order queued on bar \( t-1 \) at bar \( t \)'s open.</li>
+        <li>The strategy receives a point-in-time <code>Feed</code> whose accessors stop at bar \( t \), and returns a target exposure in \([-1, 1]\).</li>
+        <li><strong>SIGNAL</strong> → the portfolio sizes it into an <strong>ORDER</strong> for a number of shares, and the execution handler queues it for bar \( t+1 \).</li>
+        <li><strong>FILL</strong> → the portfolio updates cash, position and round-trip trade records; equity is marked at bar \( t \)'s close.</li>
+      </ol>
+      <p>Indicators are incremental: rolling sums in ring buffers, so each bar costs O(1) and nothing is ever computed over the full array. Vectorised backtests are faster, but computing over whole arrays makes it easy to leak future data by accident.</p>
+
+      <h2 id="costs">Slippage, fees and sizing</h2>
+      <p>Each fill pays half the quoted spread plus square-root market impact, a functional form with wide empirical support. \( Q \) is shares traded, \( V \) the average daily volume over the last 20 days, and \( \hat\sigma \) the daily volatility, all estimated from past bars only:</p>
+      <div class="math">\[ p_{\text{fill}} = p_{\text{open}} \left(1 + \operatorname{sign}(Q)\left[\tfrac{s}{2} + \eta\,\hat\sigma\sqrt{|Q| / V}\right]\right), \qquad \text{commission} = \max\!\big(c_{\min},\ c\,|Q|\big). \]</div>
+      <p>Volatility targeting sizes each position so it contributes roughly the same risk whatever the regime, capped by a leverage limit \( L \). To avoid churning on noise, the portfolio rebalances only when the position is more than 20% away from its target.</p>
+      <div class="math">\[ \text{shares}_t = \left\lfloor \frac{\text{signal}_t \cdot \min\!\big(L,\ \sigma_{\text{target}} / \hat\sigma^{\text{ann}}_t\big) \cdot E_t}{p_t} \right\rfloor, \qquad \hat\sigma^{\text{ann}}_t = \sqrt{252}\;\operatorname{sd}(r_{t-19..t}). \]</div>
+
+      <h2 id="metrics">Metrics</h2>
+      <p>With daily returns \( r_t = E_t / E_{t-1} - 1 \) over \( T \) days:</p>
+      <div class="math">\[ \text{Sharpe} = \sqrt{252}\,\frac{\bar r}{s_r}, \qquad \operatorname{SE}(\widehat{\text{SR}}) \approx \sqrt{252}\,\sqrt{\frac{1 + \tfrac12 \text{SR}_d^2}{T}}, \qquad \text{MDD} = \max_t \left(1 - \frac{E_t}{\max_{u \le t} E_u}\right). \]</div>
+      <p>The Sharpe standard error (Lo, 2002) is the number most backtests leave out. Ten years of daily data pins an annual Sharpe down to about ±0.32, so a Sharpe of 0.5 is barely 1.5 standard errors from zero. <strong>Win rate</strong> counts round trips, flat to flat or through a reversal, under average-cost accounting with commissions included. A position still open at the end is marked to market and shown, but left out of the win rate.</p>
+
+      <h2 id="lookahead">Avoiding look-ahead bias</h2>
+      <ul>
+        <li><strong>By construction.</strong> The strategy can only call <code>feed.bar(k)</code> for \( 0 \le k \le t \). There is no array to index into, so future bars are unreachable rather than merely discouraged.</li>
+        <li><strong>Execution lag.</strong> A decision made on bar \( t \)'s close fills at bar \( t+1 \)'s open. Slippage uses volatility and volume from earlier bars, never the bar being traded.</li>
+        <li><strong>An automated audit.</strong> On days when the strategy traded, change that day's close and scramble every later bar. No fill on or before that day may change. The correct engine passes. The two biased modes on this page fail it immediately.</li>
+        <li><strong>A future-invariance test</strong> in the test suite: multiplying every bar after day 500 by 1.3 leaves the equity curve up to day 500 bit-for-bit identical.</li>
+      </ul>
+      <p>The 1-day momentum column shows why this matters. Filling at the open of the bar whose close produced the signal turns a random walk into a Sharpe of about 6, because the "signal" already contains most of that day's move.</p>
+
+      <h2 id="overfitting">Avoiding overfitting</h2>
+      <p>Try enough parameter sets on any history and one will look good. Three defences are built in:</p>
+      <ul>
+        <li><strong>Out-of-sample holdout.</strong> Parameters are chosen on the first 60% and judged on the untouched last 40%. The scatter of in-sample against out-of-sample Sharpe shows whether in-sample rank predicts anything.</li>
+        <li><strong>Deflated Sharpe ratio</strong> (Bailey and López de Prado, 2014). The best of \( N \) trials with zero true skill still has an expected Sharpe of</li>
+      </ul>
+      <div class="math">\[ \text{SR}_0 = \sqrt{\operatorname{Var}[\widehat{\text{SR}}_n]}\,\left[(1-\gamma)\,\Phi^{-1}\!\left(1 - \tfrac{1}{N}\right) + \gamma\,\Phi^{-1}\!\left(1 - \tfrac{1}{N e}\right)\right], \quad \gamma \approx 0.5772, \]</div>
+      <p>and the probability that the winner's true Sharpe exceeds that, allowing for skewness \( \hat\gamma_3 \) and kurtosis \( \hat\gamma_4 \) of its returns, is</p>
+      <div class="math">\[ \text{DSR} = \Phi\!\left( \frac{(\widehat{\text{SR}} - \text{SR}_0)\sqrt{T - 1}}{\sqrt{1 - \hat\gamma_3\,\widehat{\text{SR}} + \tfrac{\hat\gamma_4 - 1}{4}\,\widehat{\text{SR}}^2}} \right). \]</div>
+      <ul>
+        <li><strong>Walk-forward testing.</strong> Re-fit on a rolling two-year window, trade the next six months, repeat, and stitch only the traded periods together. This is the closest a backtest gets to how the rule would really have been run.</li>
+      </ul>
+      <p>Finally, the synthetic data has a <em>known</em> answer. On a random walk no rule has an edge, so any positive result is overfitting by definition. That makes it the right place to calibrate your scepticism before trusting a result on real data.</p>
+
+      <h2 id="results">Results</h2>
+      <p>Averages over 20 independent ten-year histories per process (moving-average grid of 38 pairs, default costs, 15% volatility target):</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Process</th><th>Best in-sample Sharpe</th><th>Its out-of-sample Sharpe</th><th>Walk-forward Sharpe</th><th>DSR &gt; 0.95</th></tr></thead>
+          <tbody>
+            <tr><td>Random walk (no edge)</td><td>0.54</td><td>0.13</td><td>−0.01</td><td>0 of 20</td></tr>
+            <tr><td>Upward drift (no timing edge)</td><td>0.67</td><td>0.11</td><td>0.12</td><td>0 of 20</td></tr>
+            <tr><td>Persistent trends (real edge)</td><td>1.11</td><td>0.71</td><td>0.62</td><td>8 of 20</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The search always finds an in-sample Sharpe of 0.5 or more, even in pure noise. The deflated Sharpe never called noise significant (no false positives in 40 histories), and it detected the real trend edge in 8 of 20 histories. That is conservative but honest: a true Sharpe around 0.7 is genuinely hard to prove from ten years of daily data.</p>
+      <p class="callout">The look-ahead bug alone lifts 1-day momentum on a random walk from a Sharpe of about −0.4 (daily turnover costs money) to about +6.4, averaged over ten seeds; every seed was above 5.5. A result that good on daily data should be treated as a bug until proven otherwise.</p>
+
+      <h2 id="testing">Testing</h2>
+      <ul>
+        <li>The feed refuses negative lags and reads past the current bar; future-invariance holds bit-for-bit for every strategy.</li>
+        <li>The audit passes next-open execution and fails both biased modes for all three strategies.</li>
+        <li>Fills occur at the open of the bar after the signal, and summed round-trip P&amp;L reconciles with the equity curve to \(10^{-6}\).</li>
+        <li>Costs are charged on every fill; volatility targeting delivers realised volatility within ±2% of a 10% target.</li>
+        <li>Incremental indicators match naive recomputation; drawdown, Sharpe, win rate and profit factor match hand-computed values; PSR, DSR and expected-max-Sharpe obey their limiting cases.</li>
+        <li>Each synthetic process contains the edge it was designed to contain, averaged over seeds.</li>
+      </ul>
+
+      <h2 id="limits">Limitations</h2>
+      <ul>
+        <li>One instrument, daily bars, no borrow cost for shorts, no dividends and no corporate actions. Uploaded CSVs should be split-adjusted.</li>
+        <li>Fills are at the open with modelled slippage, with no partial fills or limit orders. Square-root impact is a sensible average, not a guarantee.</li>
+        <li>The 38 moving-average pairs are highly correlated, so the effective number of independent trials is smaller than 38. DSR with the raw count is conservative.</li>
+        <li>Walk-forward stitching ignores the cost of switching parameters at window boundaries.</li>
+        <li>Synthetic data is Gaussian. Real returns have fat tails and volatility clustering, which make every estimate here noisier.</li>
+      </ul>
+    </article>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>Event-driven backtester · part of the Trading Systems Portfolio</span>
+    <a href="../index.html">All projects</a>
+  </div>
+</footer>
+</body>
+</html>
