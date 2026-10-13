@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Options Pricer &amp; Greeks</title>
+  <meta name="description" content="Black-Scholes, binomial and Monte Carlo option pricing with live Greeks and a Newton-Raphson implied volatility solver.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%276%27 width=%276%27 height=%279%27 rx=%271%27 fill=%27%232a78d6%27/%3E%3Crect x=%279%27 y=%271%27 width=%276%27 height=%2714%27 rx=%271%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script type="module" src="../assets/ui.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span class="brand-text">Trading Systems Portfolio</span></a>
+    <nav class="nav" aria-label="Projects">
+      <a href="../order-book/index.html">Order book</a>
+      <a href="../market-making/index.html">Market making</a>
+      <a href="../backtester/index.html">Backtester</a>
+      <a href="../options/index.html" aria-current="page">Options</a>
+      <a href="../prop-risk/index.html">Prop risk</a>
+      <a href="../data-pipeline/index.html">Data pipeline</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="wrap page-head">
+    <div class="eyebrow">Project 4 · Derivatives</div>
+    <h1>Options pricer &amp; Greeks</h1>
+    <p class="lead">Three independent pricers for the same contract: the Black–Scholes closed form, a binomial tree that also handles early exercise, and Monte Carlo with variance reduction. Each slider move re-prices everything and redraws the Greeks. A Newton–Raphson solver inverts a market price back into implied volatility and shows every iteration.</p>
+    <div class="meta-links">
+      <a data-src="docs/options/README.md" href="#notes">README</a>
+      <a data-src="docs/options/options.js" href="#notes">Pricer source</a>
+      <a data-src="tests/options.test.js" href="#testing">Tests</a>
+      <a data-src="newton_solve.py" href="#iv-notes">Original Newton solver (Python)</a>
+    </div>
+  </section>
+
+  <section class="wrap bench" aria-label="Options pricer">
+    <aside class="panel sticky-panel">
+      <div class="panel-group">
+        <h3>Contract</h3>
+        <div class="seg" role="radiogroup" aria-label="Option type">
+          <input type="radio" name="otype" id="t-call" value="call" checked><label for="t-call">Call</label>
+          <input type="radio" name="otype" id="t-put" value="put"><label for="t-put">Put</label>
+        </div>
+        <div class="field">
+          <label for="S">Spot S <output for="S"></output></label>
+          <input id="S" type="range" min="50" max="150" step="0.5" value="100">
+        </div>
+        <div class="field">
+          <label for="K">Strike K <output for="K"></output></label>
+          <input id="K" type="range" min="50" max="150" step="0.5" value="100">
+        </div>
+        <div class="field">
+          <label for="vol">Volatility σ <output for="vol"></output></label>
+          <input id="vol" type="range" min="0.05" max="1" step="0.005" value="0.2">
+        </div>
+        <div class="field">
+          <label for="days">Time to expiry <output for="days"></output></label>
+          <input id="days" type="range" min="1" max="730" step="1" value="365">
+        </div>
+        <div class="field">
+          <label for="rate">Risk-free rate r <output for="rate"></output></label>
+          <input id="rate" type="range" min="0" max="0.1" step="0.0025" value="0.05">
+        </div>
+        <div class="field">
+          <label for="div">Dividend yield q <output for="div"></output></label>
+          <input id="div" type="range" min="0" max="0.08" step="0.0025" value="0">
+        </div>
+      </div>
+      <div class="panel-group">
+        <h3>Numerical methods</h3>
+        <div class="field">
+          <label for="steps">Binomial steps N <output for="steps"></output></label>
+          <input id="steps" type="range" min="10" max="1000" step="10" value="200">
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Exercise style for the binomial tree">
+          <input type="radio" name="style" id="s-eu" value="eu" checked><label for="s-eu">European</label>
+          <input type="radio" name="style" id="s-am" value="am"><label for="s-am">American</label>
+        </div>
+        <div class="field">
+          <label for="mcpaths">Monte Carlo paths</label>
+          <select id="mcpaths">
+            <option value="10000">10,000</option>
+            <option value="100000" selected>100,000</option>
+            <option value="500000">500,000</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="vr" checked> Antithetic + control variate</label>
+      </div>
+    </aside>
+
+    <div class="stack">
+      <div class="tiles">
+        <div class="tile"><span class="label">Black–Scholes</span><span class="value" id="p-bs">–</span><span class="sub" id="p-bs-sub">closed form</span></div>
+        <div class="tile"><span class="label">Binomial tree</span><span class="value" id="p-bin">–</span><span class="sub" id="p-bin-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Monte Carlo</span><span class="value" id="p-mc">–</span><span class="sub" id="p-mc-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Intrinsic / time value</span><span class="value" id="p-tv">–</span><span class="sub" id="p-tv-sub">&nbsp;</span></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><span class="label">Delta Δ</span><span class="value" id="g-delta">–</span><span class="sub">per $1 in spot</span></div>
+        <div class="tile"><span class="label">Gamma Γ</span><span class="value" id="g-gamma">–</span><span class="sub">Δ change per $1</span></div>
+        <div class="tile"><span class="label">Vega</span><span class="value" id="g-vega">–</span><span class="sub">per 1 vol point</span></div>
+        <div class="tile"><span class="label">Theta Θ</span><span class="value" id="g-theta">–</span><span class="sub">per calendar day</span></div>
+        <div class="tile"><span class="label">Rho ρ</span><span class="value" id="g-rho">–</span><span class="sub">per 1% in rates</span></div>
+      </div>
+
+      <div class="card"><div id="value-chart"></div></div>
+      <div class="grid-2">
+        <div class="card"><div id="delta-chart"></div></div>
+        <div class="card"><div id="gamma-chart"></div></div>
+        <div class="card"><div id="vega-chart"></div></div>
+        <div class="card"><div id="theta-chart"></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="card"><div id="bin-chart"></div></div>
+        <div class="card"><div id="mc-chart"></div></div>
+      </div>
+
+      <div class="card" id="iv">
+        <div class="card-title"><h3>Implied volatility solver</h3><span class="hint">Newton–Raphson on \(f(\sigma) = \text{BS}(\sigma) - P_{\text{mkt}}\)</span></div>
+        <form class="row" id="iv-form" style="align-items:end;margin-bottom:12px" novalidate>
+          <div class="field" style="width:150px">
+            <label for="iv-price">Market price</label>
+            <input id="iv-price" type="number" step="0.01" min="0" value="12.00">
+          </div>
+          <div class="field" style="width:190px">
+            <label for="iv-start">Starting guess</label>
+            <select id="iv-start">
+              <option value="auto" selected>Manaster–Koehler point</option>
+              <option value="0.05">5% (far too low)</option>
+              <option value="3">300% (far too high)</option>
+            </select>
+          </div>
+          <button class="btn" type="submit">Solve for σ</button>
+          <span class="result-line" id="iv-result" aria-live="polite"></span>
+        </form>
+        <div class="grid-2">
+          <div class="table-wrap">
+            <table class="data" id="iv-table">
+              <thead><tr><th>n</th><th>σₙ</th><th>BS(σₙ) − P</th><th>Vega</th><th>Step</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="iv-chart"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap notes" id="notes">
+    <nav class="toc" aria-label="On this page">
+      <span class="eyebrow">Notes</span>
+      <a href="#bs">Black–Scholes</a>
+      <a href="#greeks">Greeks</a>
+      <a href="#binomial">Binomial tree</a>
+      <a href="#mc">Monte Carlo</a>
+      <a href="#iv-notes">Implied volatility</a>
+      <a href="#testing">Testing</a>
+      <a href="#limits">Limitations</a>
+    </nav>
+    <article class="prose">
+      <h2 id="bs">Black–Scholes–Merton</h2>
+      <p>Assume the underlying follows geometric Brownian motion with constant volatility \( \sigma \), and that a continuously rebalanced hedge in the stock and a bond replicates the option. The option is then worth the risk-neutral expectation of its discounted payoff. With a continuous dividend yield \( q \):</p>
+      <div class="math">\[ d_1 = \frac{\ln(S/K) + (r - q + \tfrac12\sigma^2)\,T}{\sigma\sqrt{T}}, \qquad d_2 = d_1 - \sigma\sqrt{T}, \]</div>
+      <div class="math">\[ C = S e^{-qT} N(d_1) - K e^{-rT} N(d_2), \qquad P = K e^{-rT} N(-d_2) - S e^{-qT} N(-d_1). \]</div>
+      <p>\( N \) is evaluated with Hart's double-precision algorithm, accurate to about \( 10^{-16} \), so differences between the three pricers come from the numerical methods and not from the normal CDF.</p>
+
+      <h2 id="greeks">Greeks</h2>
+      <p>With \( \varphi \) the standard normal density:</p>
+      <div class="math">\[ \Delta_C = e^{-qT} N(d_1), \quad \Delta_P = -e^{-qT} N(-d_1), \quad \Gamma = \frac{e^{-qT}\varphi(d_1)}{S\sigma\sqrt T}, \quad \mathcal{V} = S e^{-qT}\varphi(d_1)\sqrt T, \]</div>
+      <div class="math">\[ \Theta_C = -\frac{S e^{-qT}\varphi(d_1)\,\sigma}{2\sqrt T} - rKe^{-rT}N(d_2) + qSe^{-qT}N(d_1), \qquad \rho_C = KTe^{-rT}N(d_2). \]</div>
+      <p>Put theta and rho swap the signs and use \( N(-d_2) \), \( N(-d_1) \). The page shows vega per volatility point (\( \mathcal V / 100 \)), theta per calendar day (\( \Theta / 365 \)) and rho per 1% move in rates. Gamma and vega peak near the strike and grow as expiry approaches for at-the-money options. That is why short-dated at-the-money options are the hardest to hedge.</p>
+
+      <h2 id="binomial">Binomial tree (Cox–Ross–Rubinstein)</h2>
+      <p>Split \( T \) into \( N \) steps of \( \Delta t \). Each step moves up by \( u \) or down by \( d \), with the risk-neutral probability chosen so the tree earns the risk-free rate net of dividends:</p>
+      <div class="math">\[ u = e^{\sigma\sqrt{\Delta t}}, \quad d = 1/u, \quad p = \frac{e^{(r-q)\Delta t} - d}{u - d}, \quad V_{i,j} = \max\!\Big(\underbrace{e^{-r\Delta t}\big[p V_{i+1,j+1} + (1-p) V_{i+1,j}\big]}_{\text{continuation}},\ \underbrace{\text{payoff}(S_{i,j})}_{\text{American only}}\Big). \]</div>
+      <p>Backward induction costs \( O(N^2) \) time and \( O(N) \) memory. The error falls roughly as \( 1/N \) but oscillates between odd and even \( N \), because the strike sits in a different place relative to the terminal nodes. The convergence chart shows this. The tree's advantage is early exercise: an American put is worth more than a European one because deep in the money, receiving \( K \) now beats waiting.</p>
+
+      <h2 id="mc">Monte Carlo</h2>
+      <p>Simulate the terminal price exactly, \( S_T = S\exp\!\big((r - q - \tfrac12\sigma^2)T + \sigma\sqrt T Z\big) \), and average discounted payoffs. Two variance-reduction techniques are applied:</p>
+      <ul>
+        <li><strong>Antithetic variates:</strong> pair every \( Z \) with \( -Z \). The payoff is monotone in \( Z \), so the pair is negatively correlated and its average has lower variance.</li>
+        <li><strong>Control variate:</strong> the discounted terminal price \( X = e^{-rT}S_T \) has known mean \( S e^{-qT} \). Use \( \hat V = \bar Y - \hat\beta(\bar X - S e^{-qT}) \) with \( \hat\beta = \widehat{\operatorname{Cov}}(X, Y)/\widehat{\operatorname{Var}}(X) \).</li>
+      </ul>
+      <div class="math">\[ \operatorname{SE} = \frac{s}{\sqrt{n}}, \qquad \text{95\% CI} = \hat V \pm 1.96\,\operatorname{SE}. \]</div>
+      <p>For an at-the-money call, the two together cut the standard error by more than half for the same number of paths, which is worth more than a fourfold increase in paths. The convergence chart shows the running estimate and its confidence band narrowing as \( 1/\sqrt n \).</p>
+
+      <h2 id="iv-notes">Implied volatility by Newton–Raphson</h2>
+      <p>Implied volatility is the \( \sigma \) that makes the model match a market price: solve \( f(\sigma) = \text{BS}(\sigma) - P_{\text{mkt}} = 0 \). Since \( f'(\sigma) = \mathcal V \) is available in closed form, Newton–Raphson is the natural tool. It is the scalar case of the solver in this repository's original <code>newton_solve.py</code>:</p>
+      <div class="math">\[ \sigma_{n+1} = \sigma_n - \frac{\text{BS}(\sigma_n) - P_{\text{mkt}}}{\mathcal V(\sigma_n)}. \]</div>
+      <p>Plain Newton can fail here. Far out of the money, vega is tiny and the first step can shoot off to a huge or negative volatility. Three safeguards make it reliable:</p>
+      <ol>
+        <li><strong>Check the price is attainable.</strong> Any \( \sigma \) gives a price strictly between the no-arbitrage bounds, \( \max(Se^{-qT} - Ke^{-rT}, 0) &lt; C &lt; Se^{-qT} \), and similarly for puts. Outside them, no implied volatility exists, and the solver says so.</li>
+        <li><strong>Start where vega is largest.</strong> The Manaster–Koehler point \( \sigma_0 = \sqrt{2\,|\ln(F/K)|/T} \) is the inflection point of price in \( \sigma \). From there Newton converges monotonically. At the money, where that formula gives zero, it uses Brenner–Subrahmanyam: \( \sigma_0 \approx \sqrt{2\pi/T}\; C / (S e^{-qT}) \).</li>
+        <li><strong>Keep a bracket.</strong> Each evaluation tightens \( [\sigma_{\text{lo}}, \sigma_{\text{hi}}] \), because price increases in \( \sigma \). If a Newton step would leave the bracket or vega is near zero, take a bisection step instead.</li>
+      </ol>
+      <p>Near the root, the error roughly squares each iteration, so the number of correct digits doubles. Try the deliberately bad starting guesses in the solver to watch the bisection fallback rescue it.</p>
+
+      <h2 id="testing">Testing</h2>
+      <ul>
+        <li>Prices match textbook values (Hull's examples) to \( 10^{-4} \) or better, and put-call parity \( C - P = Se^{-qT} - Ke^{-rT} \) holds to \( 10^{-10} \).</li>
+        <li>All five analytic Greeks match central finite differences for calls and puts at three spot levels.</li>
+        <li>The binomial tree is within 0.003 of Black–Scholes at \( N = 1000 \). The American put carries a premium (≈ 6.09 against 5.57), and the American call without dividends equals the European call.</li>
+        <li>Monte Carlo lies within 4 standard errors of the exact price, and variance reduction more than halves the standard error.</li>
+        <li>Implied volatility round-trips to \( 10^{-6} \) across calls and puts with strikes from 50 to 200, maturities from 0.05 to 2 years and volatilities from 8% to 90%. Cases with no time value left to invert are skipped. It converges in at most 6 pure-Newton steps from the Manaster–Koehler start, rejects arbitrage-violating prices, and recovers from a bad start through bisection.</li>
+      </ul>
+
+      <h2 id="limits">Limitations</h2>
+      <ul>
+        <li>Constant volatility and rates. Real markets show a volatility smile, which is why traders quote implied volatility per strike rather than one \( \sigma \).</li>
+        <li>Continuous dividend yield, not discrete cash dividends. No transaction costs, and continuous hedging is assumed.</li>
+        <li>The tree uses the plain CRR parameterisation, without Richardson extrapolation or smoothing at the strike.</li>
+        <li>Monte Carlo prices European payoffs only. American options by simulation would need Longstaff–Schwartz regression.</li>
+      </ul>
+    </article>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>Options pricer &amp; Greeks · part of the Trading Systems Portfolio</span>
+    <a href="../index.html">All projects</a>
+  </div>
+</footer>
+</body>
+</html>
