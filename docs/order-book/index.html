@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Order Book Engine</title>
+  <meta name="description" content="A limit order book and matching engine with price-time priority, limit, market and cancel orders, partial fills, a live depth chart, a trade tape and a throughput benchmark.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%276%27 width=%276%27 height=%279%27 rx=%271%27 fill=%27%232a78d6%27/%3E%3Crect x=%279%27 y=%271%27 width=%276%27 height=%2714%27 rx=%271%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script type="module" src="../assets/ui.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span class="brand-text">Trading Systems Portfolio</span></a>
+    <nav class="nav" aria-label="Projects">
+      <a href="../order-book/index.html" aria-current="page">Order book</a>
+      <a href="../market-making/index.html">Market making</a>
+      <a href="../backtester/index.html">Backtester</a>
+      <a href="../options/index.html">Options</a>
+      <a href="../prop-risk/index.html">Prop risk</a>
+      <a href="../data-pipeline/index.html">Data pipeline</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="wrap page-head">
+    <div class="eyebrow">Project 1 · Market microstructure</div>
+    <h1>Order book &amp; matching engine</h1>
+    <p class="lead">A central limit order book that matches buyers and sellers by price, then by time. It supports limit, market and cancel orders with partial fills. A simulated market feeds it live; you can trade against that market yourself.</p>
+    <div class="meta-links">
+      <a data-src="docs/order-book/README.md" href="#notes">README</a>
+      <a data-src="docs/order-book/orderbook.js" href="#notes">Engine source</a>
+      <a data-src="tests/orderbook.test.js" href="#testing">Tests</a>
+      <a data-src="bench/orderbook-bench.js" href="#benchmark">Benchmark script</a>
+    </div>
+  </section>
+
+  <section class="wrap bench" aria-label="Order book demo">
+    <aside class="panel sticky-panel">
+      <form id="order-form" class="panel-group" novalidate>
+        <h3>Place an order</h3>
+        <div class="seg side" role="radiogroup" aria-label="Side">
+          <input type="radio" name="side" id="side-buy" value="buy" checked><label for="side-buy">Buy</label>
+          <input type="radio" name="side" id="side-sell" value="sell"><label for="side-sell">Sell</label>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Order type">
+          <input type="radio" name="otype" id="type-limit" value="limit" checked><label for="type-limit">Limit</label>
+          <input type="radio" name="otype" id="type-market" value="market"><label for="type-market">Market</label>
+        </div>
+        <div class="field-2">
+          <div class="field">
+            <label for="o-price">Limit price</label>
+            <input id="o-price" type="number" step="0.01" min="0.01" value="100.00">
+          </div>
+          <div class="field">
+            <label for="o-qty">Quantity</label>
+            <input id="o-qty" type="number" step="1" min="1" value="150">
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn" type="submit" id="o-submit">Submit buy limit</button>
+          <button class="btn ghost" type="button" id="o-touch" title="Set the price to the far touch so the order trades">Price at touch</button>
+        </div>
+        <p class="result-line" id="o-result" aria-live="polite"></p>
+      </form>
+
+      <div class="panel-group">
+        <h3>Simulated market</h3>
+        <div class="row">
+          <button class="btn ghost" type="button" id="sim-toggle">Pause flow</button>
+          <button class="btn ghost" type="button" id="sim-reset">Reset book</button>
+        </div>
+        <div class="field">
+          <label for="sim-speed">Events per second <output for="sim-speed"></output></label>
+          <input id="sim-speed" type="range" min="1" max="600" step="1" value="60">
+        </div>
+        <p class="hint">Limit orders arrive around a drifting fair value; each resting order is cancelled at a constant rate, so the book settles at a stable depth.</p>
+      </div>
+
+      <div class="panel-group">
+        <h3>Benchmark</h3>
+        <div class="field">
+          <label for="bench-n">Orders to process</label>
+          <select id="bench-n">
+            <option value="200000">200,000</option>
+            <option value="1000000" selected>1,000,000</option>
+            <option value="2000000">2,000,000</option>
+          </select>
+        </div>
+        <button class="btn block" type="button" id="bench-run">Run benchmark</button>
+        <p class="hint">Runs on a separate book in this tab. Every random number is drawn before the clock starts.</p>
+      </div>
+    </aside>
+
+    <div class="stack">
+      <div class="tiles" id="tiles">
+        <div class="tile"><span class="label">Best bid</span><span class="value" id="t-bid">–</span><span class="sub" id="t-bidq">&nbsp;</span></div>
+        <div class="tile"><span class="label">Best ask</span><span class="value" id="t-ask">–</span><span class="sub" id="t-askq">&nbsp;</span></div>
+        <div class="tile"><span class="label">Spread</span><span class="value" id="t-spread">–</span><span class="sub" id="t-spreadbps">&nbsp;</span></div>
+        <div class="tile"><span class="label">Last trade</span><span class="value" id="t-last">–</span><span class="sub" id="t-lastside">&nbsp;</span></div>
+        <div class="tile"><span class="label">Resting orders</span><span class="value" id="t-resting">–</span><span class="sub" id="t-levels">&nbsp;</span></div>
+        <div class="tile"><span class="label">Trades</span><span class="value" id="t-trades">–</span><span class="sub" id="t-volume">&nbsp;</span></div>
+      </div>
+
+      <div class="card">
+        <div id="depth-chart"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><h3>Price ladder</h3><span class="hint">Top 10 levels per side</span></div>
+          <div class="ladder" id="ladder" aria-live="off"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><h3>Trade tape</h3><span class="hint">Aggressor side, newest first</span></div>
+          <div class="tape" id="tape" aria-live="off"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><h3>Your orders</h3><span class="hint">Resting orders keep their queue position until filled or cancelled</span></div>
+        <div class="table-wrap">
+          <table class="data" id="my-orders">
+            <thead><tr><th>ID</th><th>Side</th><th>Type</th><th>Price</th><th>Qty</th><th>Filled</th><th>Avg fill</th><th>Status</th><th></th></tr></thead>
+            <tbody><tr><td colspan="9" class="hint">No orders yet. Submit one from the panel; a limit order priced at the touch will trade straight away.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="benchmark">
+        <div class="card-title"><h3>Benchmark results</h3><span class="hint" id="bench-env"></span></div>
+        <div class="tiles" id="bench-tiles">
+          <div class="tile"><span class="label">Throughput</span><span class="value" id="b-ops">–</span><span class="sub">orders per second</span></div>
+          <div class="tile"><span class="label">Mean cost</span><span class="value" id="b-ns">–</span><span class="sub">nanoseconds per order</span></div>
+          <div class="tile"><span class="label">Trades generated</span><span class="value" id="b-trades">–</span><span class="sub" id="b-vol">&nbsp;</span></div>
+          <div class="tile"><span class="label">Order mix</span><span class="value" id="b-mix">–</span><span class="sub">limit / market / cancel</span></div>
+        </div>
+        <p class="hint" style="margin-top:10px">Reference run (Node 22, one core of a cloud VM): <span id="b-ref">3.3 to 4.0 million orders per second, median of five runs over 1,000,000 orders</span>. Browser numbers vary with the JIT, the device and whatever else the tab is doing.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap notes" id="notes">
+    <nav class="toc" aria-label="On this page">
+      <span class="eyebrow">Notes</span>
+      <a href="#problem">The problem</a>
+      <a href="#structures">Data structures</a>
+      <a href="#rules">Matching rules</a>
+      <a href="#flow">Simulated order flow</a>
+      <a href="#bench-notes">Benchmark</a>
+      <a href="#testing">Testing</a>
+      <a href="#limits">Limitations</a>
+    </nav>
+    <article class="prose">
+      <h2 id="problem">The problem</h2>
+      <p>An exchange receives a stream of instructions: buy 150 at 100.02 or better, sell 40 at whatever the market will pay, cancel order 4,812. The matching engine has to decide, deterministically and quickly, who trades with whom and at what price. Nearly every venue uses <strong>price-time priority</strong>. The best price trades first. Among orders at the same price, the one that arrived first trades first.</p>
+      <p>That rule turns the design into a data-structure problem. The engine needs the best price on each side instantly, the oldest order at that price instantly, and it must be able to pull any order out of the middle of a queue when it is cancelled.</p>
+
+      <h2 id="structures">Data structures</h2>
+      <div class="diagram" role="img" aria-label="Diagram: each side of the book is a sorted array of prices with the best price last. Each price maps to a level holding a first-in-first-out linked list of orders. A hash map from order id points directly at each order so cancels unlink it in constant time.">
+        <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+          <style>
+            .dg-box{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1}
+            .dg-best{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+            .dg-ask{fill:color-mix(in srgb,var(--ask) 16%,var(--surface));stroke:var(--ask);stroke-width:1.2}
+            .dg-bid{fill:color-mix(in srgb,var(--bid) 16%,var(--surface));stroke:var(--bid);stroke-width:1.2}
+            .dg-t{fill:var(--ink);font:12px var(--font-mono)}
+            .dg-s{fill:var(--muted);font:11px var(--font-body)}
+            .dg-h{fill:var(--ink-2);font:600 11px var(--font-body);letter-spacing:.06em}
+            .dg-l{stroke:var(--line-strong);stroke-width:1.2;fill:none}
+            .dg-a{fill:var(--line-strong)}
+            .dg-m{stroke:var(--ink);stroke-width:1.2;fill:none;stroke-dasharray:4 3}
+          </style>
+          <text class="dg-h" x="10" y="20">ASKS · prices[] sorted worst → best</text>
+          <rect class="dg-box" x="10" y="32" width="70" height="26" rx="3"/><text class="dg-t" x="22" y="50">100.07</text>
+          <rect class="dg-box" x="84" y="32" width="70" height="26" rx="3"/><text class="dg-t" x="96" y="50">100.05</text>
+          <rect class="dg-best" x="158" y="32" width="70" height="26" rx="3"/><text class="dg-t" x="170" y="50">100.03</text>
+          <text class="dg-s" x="158" y="74">best ask = last element</text>
+          <path class="dg-l" d="M193 58 V96 H262"/>
+          <text class="dg-h" x="262" y="20">LEVEL 100.03 · FIFO linked list</text>
+          <text class="dg-s" x="262" y="80">head</text>
+          <rect class="dg-ask" x="262" y="84" width="96" height="26" rx="3"/><text class="dg-t" x="272" y="102">#4812 · 40</text>
+          <path class="dg-l" d="M358 92 H382 M382 102 H358"/>
+          <rect class="dg-ask" x="382" y="84" width="96" height="26" rx="3"/><text class="dg-t" x="392" y="102">#4830 · 150</text>
+          <path class="dg-l" d="M478 92 H502 M502 102 H478"/>
+          <rect class="dg-ask" x="502" y="84" width="96" height="26" rx="3"/><text class="dg-t" x="512" y="102">#4851 · 25</text>
+          <text class="dg-s" x="566" y="80">tail</text>
+          <text class="dg-s" x="618" y="94">qty 215</text>
+          <text class="dg-s" x="618" y="108">count 3</text>
+
+          <text class="dg-h" x="10" y="160">BIDS · prices[] sorted worst → best</text>
+          <rect class="dg-box" x="10" y="172" width="70" height="26" rx="3"/><text class="dg-t" x="22" y="190">99.96</text>
+          <rect class="dg-box" x="84" y="172" width="70" height="26" rx="3"/><text class="dg-t" x="96" y="190">99.98</text>
+          <rect class="dg-best" x="158" y="172" width="70" height="26" rx="3"/><text class="dg-t" x="170" y="190">100.01</text>
+          <text class="dg-s" x="158" y="214">best bid = last element</text>
+          <path class="dg-l" d="M193 198 V236 H262"/>
+          <rect class="dg-bid" x="262" y="224" width="96" height="26" rx="3"/><text class="dg-t" x="272" y="242">#4790 · 60</text>
+          <path class="dg-l" d="M358 232 H382 M382 242 H358"/>
+          <rect class="dg-bid" x="382" y="224" width="96" height="26" rx="3"/><text class="dg-t" x="392" y="242">#4844 · 10</text>
+          <text class="dg-s" x="618" y="234">qty 70</text>
+          <text class="dg-s" x="618" y="248">count 2</text>
+
+          <rect class="dg-box" x="600" y="150" width="150" height="46" rx="3"/>
+          <text class="dg-t" x="612" y="170">orders: Map</text>
+          <text class="dg-s" x="612" y="187">id → Order (O(1) cancel)</text>
+          <path class="dg-m" d="M640 150 C 600 130, 470 140, 430 112"/>
+          <text class="dg-s" x="10" y="288">Prices are integer ticks. A Map from price to level sits alongside each sorted array.</text>
+        </svg>
+      </div>
+      <p>Each side of the book is three structures working together.</p>
+      <ul>
+        <li><strong>A sorted array of active prices</strong>, ordered from worst to best so the best price is the <em>last</em> element. Reading the touch is O(1), and removing an exhausted best level is a <code>pop()</code>. A new level is found by binary search. Most new levels appear at or near the touch, so the splice usually moves only a few elements.</li>
+        <li><strong>A hash map from price to level</strong>, so adding to an existing level skips the search entirely.</li>
+        <li><strong>A FIFO queue per level</strong>, built as an intrusive doubly linked list. Each order carries its own <code>prev</code>/<code>next</code> pointers, so appending, taking the head, and unlinking from the middle are all O(1). The level keeps a running total quantity and order count for the depth view.</li>
+      </ul>
+      <p>A global map from order id to order object lets a cancel jump straight to the order and unlink it.</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Operation</th><th>Cost</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Best bid / best ask</td><td>O(1)</td><td>last element of the price array</td></tr>
+            <tr><td>Add at an existing price</td><td>O(1)</td><td>map lookup, append to tail</td></tr>
+            <tr><td>Add at a new price</td><td>O(log L) + O(k)</td><td>binary search, splice shifts the k levels better than it</td></tr>
+            <tr><td>Each fill while matching</td><td>O(1)</td><td>take the head order, drop an empty level with <code>pop()</code></td></tr>
+            <tr><td>Cancel</td><td>O(1)</td><td>id map, unlink; O(log L) only if the level empties</td></tr>
+            <tr><td>Depth snapshot, n levels</td><td>O(n)</td><td>walk back from the end of the array</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>I chose the sorted array over a balanced tree on purpose. With L in the hundreds, a contiguous array of integers beats a pointer-chasing tree on cache behaviour, and activity concentrates near the touch, where insertion is cheapest. A tree would win if orders arrived uniformly across thousands of distant levels. Production engines with a bounded price band often go further and use a flat array indexed by tick offset from a reference price, which makes every level lookup O(1).</p>
+
+      <h2 id="rules">Matching rules</h2>
+      <ul>
+        <li><strong>Prices are integer ticks.</strong> 100.03 is stored as 10003 with a 0.01 tick, so equality and ordering are exact and no floating-point error can split a level.</li>
+        <li><strong>A buy matches while</strong> \( p_{\text{best ask}} \le p_{\text{limit}} \) (a sell while \( p_{\text{best bid}} \ge p_{\text{limit}} \)). Market orders have no limit and walk the book until filled or the book is empty.</li>
+        <li><strong>The trade price is the resting order's price.</strong> The passive (maker) side set the price; an aggressive limit through the touch gets price improvement.</li>
+        <li><strong>Partial fills.</strong> Each fill trades \( q = \min(q_{\text{incoming}}, q_{\text{resting}}) \). A partially filled resting order keeps its place at the head of its queue. A partially filled incoming limit order rests its remainder at its limit price.</li>
+        <li><strong>Market orders are immediate-or-cancel.</strong> Any unfilled remainder is cancelled and never rests.</li>
+        <li><strong>Invariant:</strong> after every event the book is uncrossed, \( p_{\text{best bid}} &lt; p_{\text{best ask}} \).</li>
+      </ul>
+
+      <h2 id="flow">Simulated order flow</h2>
+      <p>The live market and the benchmark share one flow model, loosely after Cont, Stoikov and Talreja (2010). A latent fair value \( F \) follows a random walk in ticks. Limit orders arrive at rate \( \lambda_L \) and market orders at rate \( \lambda_M \). Each resting order is cancelled independently at rate \( \theta \), so with \( N \) orders resting the next event is a cancel with probability</p>
+      <div class="math">\[ P(\text{cancel}) = \frac{\theta N}{\lambda_L + \lambda_M + \theta N}. \]</div>
+      <p>Cancellation that grows with the size of the book gives it a stable equilibrium depth: with the defaults, about 3,000 resting orders spread over 60 to 100 price levels per side. A limit buy is priced at \( \operatorname{round}(F) - \delta \) and a sell at \( \operatorname{round}(F) + \delta \), where \( \delta = \lfloor X \rfloor - 1 \) and \( X \sim \mathrm{Exp}(\text{mean } 10) \) ticks. Since \( P(\delta = -1) = 1 - e^{-0.1} \approx 9.5\% \), about one limit order in ten is priced through fair value and is likely to trade on arrival. Sizes are lognormal with mean 20.</p>
+
+      <h2 id="bench-notes">Benchmark</h2>
+      <p>The benchmark draws every random number for the whole stream before the clock starts, then times only the replay. Inside the timed loop the harness does two things besides calling the engine: it picks the event type from a pre-drawn uniform, and it maintains the list of resting ids that cancels target. A warm-up pass on a different stream runs first so the JIT has compiled the hot paths.</p>
+      <p>On Node 22 (one core of a shared cloud VM) the median of five runs over 1,000,000 events is <strong>3.3 to 4.0 million operations per second</strong> across repeated sessions, roughly 250 to 300 ns per operation. The stream is 65% limit orders, 4% market orders and 32% cancels, and produces about 356,000 trades. Timing each call separately gives a median of about 170 ns and a 99th percentile under 1 µs. The 99.9th percentile is a few microseconds, which is garbage collection and timer noise rather than the algorithm.</p>
+      <p class="callout">These are single-threaded, in-process numbers with no network, persistence or risk checks. Production engines quote similar or better figures in C++ or Rust with pre-allocated memory; the point here is that the data structures, not the language, set the shape of the cost.</p>
+
+      <h2 id="testing">Testing</h2>
+      <ul>
+        <li><strong>Rule tests</strong> for FIFO at one price, price priority across levels, maker-price execution, partial fills on both sides, queue position after a partial fill, market-order sweep and IOC residual, cancels from the middle of a queue, and rejection of invalid input.</li>
+        <li><strong>Differential test</strong> against a deliberately naive reference matcher that re-sorts the whole book on every order. Over 15,000 random events across five seeds, the engine's trades (price, quantity, maker id, taker id) and final depth match exactly.</li>
+        <li><strong>Invariant checks</strong> during a 20,000-event simulation: prices sorted, level totals equal the sum of their queues, FIFO sequence increasing, the id index in sync, no empty levels, book uncrossed, and traded volume conserved.</li>
+      </ul>
+      <p>Run them with <code>npm test</code>, and the benchmark with <code>npm run bench</code>.</p>
+
+      <h2 id="limits">Limitations</h2>
+      <ul>
+        <li>Single instrument, single thread, in memory. There is no journal or replay log, so a crash loses the book.</li>
+        <li>No self-trade prevention, no order amend (cancel and resubmit loses queue priority, which matches most venues), and no IOC/FOK or post-only flags on limit orders.</li>
+        <li>No opening or closing auction, and no tick-size or price-band validation beyond positive integer ticks.</li>
+        <li>JavaScript garbage collection adds tail latency. A production engine would pre-allocate orders in a pool and avoid allocating trade objects on the hot path.</li>
+        <li>The splice into the price array is O(L) in the worst case, for a new level far from the touch on a very deep book.</li>
+      </ul>
+    </article>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>Order book engine · part of the Trading Systems Portfolio</span>
+    <a href="../index.html">All projects</a>
+  </div>
+</footer>
+</body>
+</html>

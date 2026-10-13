@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Market-Making Simulator</title>
+  <meta name="description" content="An Avellaneda-Stoikov market maker quoting around a fair value, skewing quotes to manage inventory, with exact P&L attribution into spread capture, inventory P&L and adverse selection.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%276%27 width=%276%27 height=%279%27 rx=%271%27 fill=%27%232a78d6%27/%3E%3Crect x=%279%27 y=%271%27 width=%276%27 height=%2714%27 rx=%271%27 fill=%27%23eb6834%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script type="module" src="../assets/ui.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span class="brand-text">Trading Systems Portfolio</span></a>
+    <nav class="nav" aria-label="Projects">
+      <a href="../order-book/index.html">Order book</a>
+      <a href="../market-making/index.html" aria-current="page">Market making</a>
+      <a href="../backtester/index.html">Backtester</a>
+      <a href="../options/index.html">Options</a>
+      <a href="../prop-risk/index.html">Prop risk</a>
+      <a href="../data-pipeline/index.html">Data pipeline</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="wrap page-head">
+    <div class="eyebrow">Project 2 · Liquidity provision</div>
+    <h1>Market-making simulator</h1>
+    <p class="lead">A bot quotes a bid and an ask around a moving fair value. It earns the spread when both sides trade and loses when inventory piles up before the price moves against it. The inventory-skewed strategy (Avellaneda–Stoikov) shades both quotes to push inventory back towards zero.</p>
+    <div class="meta-links">
+      <a data-src="docs/market-making/README.md" href="#notes">README</a>
+      <a data-src="docs/market-making/marketmaker.js" href="#notes">Simulator source</a>
+      <a data-src="tests/marketmaker.test.js" href="#testing">Tests</a>
+    </div>
+  </section>
+
+  <section class="wrap bench" aria-label="Market-making simulator">
+    <aside class="panel sticky-panel">
+      <div class="panel-group">
+        <h3>Strategy</h3>
+        <div class="field">
+          <label for="strategy">Quoting rule</label>
+          <select id="strategy">
+            <option value="inventory" selected>Inventory-skewed (Avellaneda–Stoikov)</option>
+            <option value="symmetric">Symmetric around mid</option>
+            <option value="linear">Fixed spread, linear skew</option>
+          </select>
+        </div>
+        <div class="field" data-for="as">
+          <label for="gamma">Risk aversion γ <output for="gamma"></output></label>
+          <input id="gamma" type="range" min="0" max="6" step="1" value="2">
+        </div>
+        <div class="field" data-for="linear" hidden>
+          <label for="half">Half-spread h <output for="half"></output></label>
+          <input id="half" type="range" min="0.2" max="2" step="0.05" value="0.65">
+        </div>
+        <div class="field" data-for="linear" hidden>
+          <label for="skew">Skew per unit of inventory <output for="skew"></output></label>
+          <input id="skew" type="range" min="0" max="0.3" step="0.01" value="0.05">
+        </div>
+        <div class="field">
+          <label for="qmax">Inventory limit</label>
+          <select id="qmax">
+            <option value="Infinity" selected>None</option>
+            <option value="10">±10 units</option>
+            <option value="5">±5 units</option>
+            <option value="3">±3 units</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="panel-group">
+        <h3>Market</h3>
+        <div class="field">
+          <label for="sigma">Volatility σ (per unit time) <output for="sigma"></output></label>
+          <input id="sigma" type="range" min="0.5" max="4" step="0.1" value="2">
+        </div>
+        <div class="field">
+          <label for="kk">Order-flow decay k <output for="kk"></output></label>
+          <input id="kk" type="range" min="0.5" max="3" step="0.1" value="1.5">
+        </div>
+        <div class="field">
+          <label for="aa">Order arrival scale A <output for="aa"></output></label>
+          <input id="aa" type="range" min="40" max="300" step="10" value="140">
+        </div>
+        <div class="field">
+          <label for="tox">Share of informed fills <output for="tox"></output></label>
+          <input id="tox" type="range" min="0" max="0.6" step="0.05" value="0">
+        </div>
+        <div class="field">
+          <label for="jump">Price jump after an informed fill <output for="jump"></output></label>
+          <input id="jump" type="range" min="0" max="1.5" step="0.05" value="0.5">
+        </div>
+        <div class="field">
+          <label for="rebate">Maker rebate per unit <output for="rebate"></output></label>
+          <input id="rebate" type="range" min="-0.2" max="0.2" step="0.01" value="0">
+        </div>
+      </div>
+
+      <div class="panel-group">
+        <h3>Run</h3>
+        <div class="field-2">
+          <div class="field">
+            <label for="seed">Path seed</label>
+            <input id="seed" type="number" min="1" step="1" value="11">
+          </div>
+          <div class="field">
+            <label for="paths">MC paths</label>
+            <select id="paths">
+              <option value="500">500</option>
+              <option value="1000" selected>1,000</option>
+              <option value="3000">3,000</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn ghost" type="button" id="new-path">New path</button>
+          <button class="btn" type="button" id="run-mc">Run Monte Carlo</button>
+        </div>
+        <button class="btn ghost" type="button" id="defaults">Reset to the paper's parameters</button>
+      </div>
+    </aside>
+
+    <div class="stack">
+      <div class="tiles">
+        <div class="tile"><span class="label">Final P&amp;L</span><span class="value" id="t-pnl">–</span><span class="sub" id="t-pnl-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Spread captured</span><span class="value" id="t-edge">–</span><span class="sub" id="t-edge-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Inventory P&amp;L</span><span class="value" id="t-inv">–</span><span class="sub">from holding through price moves</span></div>
+        <div class="tile"><span class="label">Adverse selection</span><span class="value" id="t-adv">–</span><span class="sub" id="t-adv-sub">&nbsp;</span></div>
+        <div class="tile"><span class="label">Inventory</span><span class="value" id="t-q">–</span><span class="sub" id="t-q-sub">&nbsp;</span></div>
+      </div>
+
+      <div class="card"><div id="quote-chart"></div></div>
+      <div class="grid-2">
+        <div class="card"><div id="inv-chart"></div></div>
+        <div class="card"><div id="pnl-chart"></div></div>
+      </div>
+
+      <div class="card" id="mc">
+        <div class="card-title"><h3>Monte Carlo: same paths, three strategies</h3><span class="hint" id="mc-note"></span></div>
+        <div class="table-wrap">
+          <table class="data" id="mc-table">
+            <thead><tr><th>Strategy</th><th>Mean P&amp;L</th><th>Std dev</th><th>Mean / std</th><th>P(loss)</th><th>Avg spread</th><th>Fills</th><th>Std final q</th><th>Spread capture</th><th>Inventory P&amp;L</th><th>Adverse sel.</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="grid-3" style="margin-top:14px">
+          <div id="hist-inventory"></div>
+          <div id="hist-symmetric"></div>
+          <div id="hist-linear"></div>
+        </div>
+        <p class="hint" style="margin-top:8px">Each strategy runs on identical random numbers path by path (common random numbers), so differences come from the quoting rule, not luck.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap notes" id="notes">
+    <nav class="toc" aria-label="On this page">
+      <span class="eyebrow">Notes</span>
+      <a href="#problem">How a market maker earns</a>
+      <a href="#model">The model</a>
+      <a href="#strategy">Optimal quotes</a>
+      <a href="#attribution">P&amp;L attribution</a>
+      <a href="#results">Results</a>
+      <a href="#testing">Testing</a>
+      <a href="#limits">Limitations</a>
+    </nav>
+    <article class="prose">
+      <h2 id="problem">How a market maker earns</h2>
+      <p>A market maker posts a bid below fair value and an ask above it. If an impatient buyer and an impatient seller both arrive, the maker buys low, sells high and keeps the spread without holding anything. The catch is that they rarely arrive in balance. After three sells in a row the maker is long three units, and every tick down in the price now costs money. A tighter quote trades more often but earns less per trade. A wider quote earns more per trade but trades rarely.</p>
+      <p>Two forces work against the spread. <strong>Inventory risk</strong> is the variance from holding a position while the price diffuses. <strong>Adverse selection</strong> is the systematic loss to traders who know where the price is going: their fills are followed by moves against the maker. The job is to price both into the quotes.</p>
+
+      <h2 id="model">The model</h2>
+      <p>Following Avellaneda and Stoikov (2008), the mid price is driftless Brownian motion, simulated as a binomial walk with step \( \pm\sigma\sqrt{\Delta t} \). The maker quotes a bid at distance \( \delta^b \) below the mid and an ask at distance \( \delta^a \) above it. Market orders hit each quote as a Poisson process whose intensity decays with distance:</p>
+      <div class="math">\[ \lambda(\delta) = A\,e^{-k\delta}, \qquad P(\text{fill in } \Delta t) = \lambda(\delta)\,\Delta t . \]</div>
+      <p>The exponential shape comes from assuming power-law market-order sizes and logarithmic price impact. \( A \) scales how much flow arrives; \( k \) sets how quickly it fades as quotes move away from the mid. The maker has cash \( X_t \) and inventory \( q_t \), and maximises expected exponential utility of terminal wealth with risk aversion \( \gamma \):</p>
+      <div class="math">\[ \max_{\delta^a,\,\delta^b}\; \mathbb{E}\left[-e^{-\gamma\,(X_T + q_T S_T)}\right]. \]</div>
+
+      <h2 id="strategy">Optimal quotes</h2>
+      <p>Solving the Hamilton–Jacobi–Bellman equation to first order in inventory gives two results. The first is a <strong>reservation price</strong>: the price at which the maker is indifferent to holding one more unit. Long inventory pulls it below the mid.</p>
+      <div class="math">\[ r(s, q, t) = s - q\,\gamma\,\sigma^2\,(T - t). \]</div>
+      <p>The second is a <strong>total spread</strong> placed symmetrically around \( r \), not around the mid:</p>
+      <div class="math">\[ \delta^a + \delta^b = \gamma\,\sigma^2\,(T - t) + \frac{2}{\gamma}\ln\!\left(1 + \frac{\gamma}{k}\right), \qquad p^{b,a} = r \mp \tfrac{1}{2}(\delta^a + \delta^b). \]</div>
+      <p>So a long maker lowers both quotes. Its ask becomes more attractive, so it sells more, and its bid less attractive, so it buys less. The first term widens the spread when risk is high (large \( \sigma \), long horizon). The second is the monopolist's margin given how price-sensitive the flow is (\( k \)). As \( \gamma \to 0 \), \( r \to s \) and the spread tends to \( 2/k \): a risk-neutral maker ignores inventory.</p>
+      <p>The page compares three rules on the same paths: Avellaneda–Stoikov; a <em>symmetric</em> rule using the same spread centred on the mid; and a <em>linear-skew</em> rule \( p^{b,a} = s - \kappa q \mp h \) that many desks use in practice.</p>
+
+      <h2 id="attribution">P&amp;L attribution</h2>
+      <p>Marking inventory to the mid, the change in wealth over a step splits exactly into parts. A buy at \( p^b \) when the mid is \( s \) adds \( s - p^b \) of <em>spread capture</em> the instant it fills; a sell adds \( p^a - s \). Holding \( q \) through a mid move \( \Delta S \) adds \( q\,\Delta S \). I split \( \Delta S \) into the diffusive part and the jump caused by informed flow:</p>
+      <div class="math">\[ \Pi_T = \underbrace{\sum_{\text{fills}} |p - s|}_{\text{spread capture}} \;+\; \underbrace{\sum_t q_t\,\Delta S^{\text{diff}}_t}_{\text{inventory P\&L}} \;+\; \underbrace{\sum_t q_t\,\Delta S^{\text{jump}}_t}_{\text{adverse selection}} \;+\; \text{rebates}. \]</div>
+      <p>The tests check this identity to \( 10^{-9} \) on every path. <strong>Adverse selection extension:</strong> each fill comes from an informed trader with probability \( \pi \), and the mid then jumps by \( J \) in the informed trader's favour. The diffusive inventory P&amp;L has zero mean; the adverse-selection term is negative by construction.</p>
+
+      <h2 id="results">Results</h2>
+      <p>With the paper's parameters (\( s_0 = 100 \), \( T = 1 \), \( \sigma = 2 \), \( \Delta t = 0.005 \), \( A = 140 \), \( k = 1.5 \), \( \gamma = 0.1 \)) over 1,000 paths:</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Strategy (γ = 0.1)</th><th>Mean P&amp;L</th><th>Std dev</th><th>Std final q</th><th>Paper: mean</th><th>Paper: std</th><th>Paper: std q</th></tr></thead>
+          <tbody>
+            <tr><td>Inventory-skewed</td><td>65.1</td><td>6.6</td><td>2.9</td><td>62.9</td><td>5.9</td><td>2.8</td></tr>
+            <tr><td>Symmetric</td><td>68.1</td><td>12.8</td><td>8.3</td><td>67.2</td><td>13.4</td><td>8.7</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The headline replicates: inventory skew gives up about 3 of mean profit and halves the standard deviation, so the profit-to-risk ratio roughly doubles. One difference is explained: the paper's reported average spread of 1.29 equals \( (2/\gamma)\ln(1+\gamma/k) \) alone. I include the \( \gamma\sigma^2(T-t) \) term as the formula states, so my average quoted spread is 1.49, which slightly raises profit per fill.</p>
+      <p>Adding informed flow shows the other side of the business. With 30% of fills informed and a jump of 0.5, spread capture is unchanged, because the quotes do not react to it. Adverse selection then costs 6.6 with inventory skew and 10.4 with symmetric quotes, 10 to 15% of everything the spread earned, and P&amp;L volatility rises. The inventory-aware rules lose less because they carry less inventory into each jump. That is why real market makers invest so heavily in deciding <em>whom</em> they quote to and how fast they react to fills.</p>
+      <p class="callout">The simple linear-skew rule performs about as well as Avellaneda–Stoikov here. The value of the model is less a magic formula than a principled way to set the skew and the spread from \( \gamma \), \( \sigma \) and \( k \), which you would otherwise tune by hand.</p>
+
+      <h2 id="testing">Testing</h2>
+      <ul>
+        <li>Closed forms: reservation price and spread equal the formulas above for given inputs.</li>
+        <li>The attribution identity holds to \( 10^{-9} \) for all three strategies with informed flow and rebates switched on.</li>
+        <li>Every fill earns non-negative spread capture when quotes straddle the mid, and the inventory limit is never breached.</li>
+        <li>Statistical checks with a fixed seed: skewing reduces P&amp;L standard deviation and terminal-inventory dispersion against symmetric quoting, and toxic flow lowers mean P&amp;L.</li>
+      </ul>
+
+      <h2 id="limits">Limitations</h2>
+      <ul>
+        <li>Fills depend only on quote distance, through \( A e^{-k\delta} \). There is no queue position, no order book, no latency and no competition from other makers.</li>
+        <li>One unit per fill, at most one fill per side per step, and a driftless arithmetic mid. Real flow clusters in time and trends.</li>
+        <li>Adverse selection is a stylised jump, not a model of informed traders' information.</li>
+        <li>The closed-form quotes come from a first-order approximation. Guéant, Lehalle and Fernandez-Tapia (2013) solve the inventory-constrained version exactly.</li>
+      </ul>
+    </article>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>Market-making simulator · part of the Trading Systems Portfolio</span>
+    <a href="../index.html">All projects</a>
+  </div>
+</footer>
+</body>
+</html>
